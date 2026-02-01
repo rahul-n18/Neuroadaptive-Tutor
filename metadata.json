@@ -1,0 +1,7 @@
+{
+  "name": "Neuroadaptive AI Tutor",
+  "description": "A research interface for conditioning Conversational AI by detecting cognitive workload, featuring a calibration countback task and an AI-driven tutoring system.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
