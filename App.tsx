@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { AppState, TutoringConfig, TutoringComplexity, TutoringPacing } from './types';
+import { AppState, TutoringConfig, TutoringComplexity, TutoringPacing, SessionMode } from './types';
 import TutoringSession from './components/TutoringSession';
 import { generateAppBackground } from './services/geminiService';
 import { logger } from './utils/eventLogger';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.WELCOME);
+  const [sessionMode, setSessionMode] = useState<SessionMode>('default');
   const [tutoringConfig, setTutoringConfig] = useState<TutoringConfig>({
     topic: 'Photosynthesis',
     complexity: TutoringComplexity.SIMPLE,
@@ -28,18 +29,42 @@ const App: React.FC = () => {
   }, []);
 
   // Navigation Handlers
-  const startTutoringSetup = () => setAppState(AppState.TUTORING_SETUP);
+  const startTutoringSetup = () => {
+      setAppState(AppState.TUTORING_SETUP);
+      setSessionMode('default');
+  };
   const startTutoringSession = () => setAppState(AppState.TUTORING_SESSION);
+  const goBackToWelcome = () => {
+      setAppState(AppState.WELCOME);
+      setSessionMode('default');
+  };
+  
   const handleSessionComplete = (data: any) => {
     setResults([...results, data]);
     setAppState(AppState.FINISHED);
+    setSessionMode('default');
   };
   const restart = () => {
     setResults([]);
     setAppState(AppState.WELCOME);
+    setSessionMode('default');
   };
   const nextSession = () => {
     setAppState(AppState.TUTORING_SETUP);
+    setSessionMode('default');
+  };
+
+  const handleModeChange = (mode: SessionMode) => {
+    setSessionMode(mode);
+  };
+
+  const getBackgroundClass = () => {
+    switch(sessionMode) {
+        case 'explanation': return 'bg-black text-white';
+        case 'interruption': return 'bg-white text-slate-900';
+        case 'quiz': return 'bg-gray-600 text-white';
+        default: return 'bg-slate-900 text-slate-100';
+    }
   };
 
   // Render Views
@@ -75,8 +100,16 @@ const App: React.FC = () => {
 
       case AppState.TUTORING_SETUP:
         return (
-            <div className="max-w-lg w-full bg-slate-800/90 backdrop-blur-md p-8 rounded-2xl shadow-xl border border-slate-700">
-                <h2 className="text-2xl font-bold text-white mb-6">Configure Tutoring Session</h2>
+            <div className="max-w-lg w-full bg-slate-800/90 backdrop-blur-md p-8 rounded-2xl shadow-xl border border-slate-700 relative">
+                <button 
+                  onClick={goBackToWelcome}
+                  className="absolute top-4 left-4 text-slate-400 hover:text-white transition-colors"
+                  aria-label="Back"
+                >
+                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                </button>
+
+                <h2 className="text-2xl font-bold text-white mb-6 text-center">Configure Tutoring Session</h2>
                 
                 <div className="space-y-6">
                     <div>
@@ -131,7 +164,7 @@ const App: React.FC = () => {
         );
 
       case AppState.TUTORING_SESSION:
-        return <TutoringSession config={tutoringConfig} onSessionComplete={handleSessionComplete} />;
+        return <TutoringSession config={tutoringConfig} onSessionComplete={handleSessionComplete} onModeChange={handleModeChange} />;
 
       case AppState.FINISHED:
         return (
@@ -211,18 +244,22 @@ const App: React.FC = () => {
 
   return (
     <div 
-        className="min-h-screen w-full bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-6 relative overflow-hidden transition-all duration-1000"
+        className={`min-h-screen w-full flex flex-col items-center justify-center p-6 relative overflow-hidden transition-all duration-500 ${getBackgroundClass()}`}
         style={{
-            backgroundImage: bgImage ? `url(${bgImage})` : undefined,
+            backgroundImage: (bgImage && sessionMode === 'default') ? `url(${bgImage})` : undefined,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
         }}
     >
-      {/* Dark Overlay for readability */}
-      <div className={`absolute inset-0 bg-slate-900/80 transition-opacity duration-1000 ${bgImage ? 'opacity-90' : 'opacity-100'}`}></div>
+      {/* Dark Overlay for readability - only in default mode */}
+      {sessionMode === 'default' && (
+        <div className={`absolute inset-0 bg-slate-900/80 transition-opacity duration-1000 ${bgImage ? 'opacity-90' : 'opacity-100'}`}></div>
+      )}
       
-      {/* Radial Gradient fallback/blend */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent to-slate-950 pointer-events-none"></div>
+      {/* Radial Gradient fallback/blend - only in default mode */}
+      {sessionMode === 'default' && (
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent to-slate-950 pointer-events-none"></div>
+      )}
 
       {/* Content wrapper with z-index */}
       <div className="relative z-10 w-full flex flex-col items-center justify-center">

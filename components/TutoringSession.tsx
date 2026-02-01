@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TutoringConfig, TutoringComplexity, TutoringPacing, TutoringSessionData, NasaTlxResult, QuizQuestion } from '../types';
+import { TutoringConfig, TutoringComplexity, TutoringPacing, TutoringSessionData, NasaTlxResult, QuizQuestion, SessionMode } from '../types';
 import { generateTutoringScript, generateTutoringAudio, generateQuiz, answerLearnerQuestion } from '../services/geminiService';
 import { AudioPlayer } from '../utils/audio';
 import { logger } from '../utils/eventLogger';
@@ -10,6 +10,7 @@ import AICharacter from './AICharacter';
 interface TutoringSessionProps {
   config: TutoringConfig;
   onSessionComplete: (data: any) => void;
+  onModeChange: (mode: SessionMode) => void;
 }
 
 enum SessionState {
@@ -24,7 +25,7 @@ enum SessionState {
   ERROR
 }
 
-const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComplete }) => {
+const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComplete, onModeChange }) => {
   const [state, setState] = useState<SessionState>(SessionState.LOADING);
   const [sessionData, setSessionData] = useState<TutoringSessionData | null>(null);
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
@@ -44,6 +45,33 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
   const answerPlayerRef = useRef<AudioPlayer | null>(null); // Interruption Answer Player
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Update App Mode based on local State
+  useEffect(() => {
+    let mode: SessionMode = 'default';
+    if (state === SessionState.PLAYING) {
+        mode = 'explanation';
+    } else if (state === SessionState.LISTENING || state === SessionState.PROCESSING || state === SessionState.ANSWERING) {
+        mode = 'interruption';
+    } else if (state === SessionState.QUIZ) {
+        mode = 'quiz';
+    } else if (state === SessionState.LOADING) {
+        mode = 'default'; // Keep default background during loading
+    }
+    
+    onModeChange(mode);
+  }, [state, onModeChange]);
+
+  const isLightMode = state === SessionState.LISTENING || state === SessionState.PROCESSING || state === SessionState.ANSWERING;
+  
+  // Text contrast helpers
+  const textColor = isLightMode ? 'text-slate-900' : 'text-white';
+  const subTextColor = isLightMode ? 'text-slate-600' : 'text-slate-400';
+  const accentTextColor = isLightMode ? 'text-blue-700' : 'text-blue-300';
+  const statusPillStyle = config.complexity === TutoringComplexity.COMPLEX 
+    ? (isLightMode ? 'bg-purple-500/10 border-purple-500/50 text-purple-700' : 'bg-purple-500/10 border-purple-500/50 text-purple-300')
+    : (isLightMode ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-700' : 'bg-emerald-500/10 border-emerald-500/50 text-emerald-300');
+
 
   // Timer Logic
   useEffect(() => {
@@ -109,10 +137,15 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
           audioPromise,
           quizPromise
         ]);
+        
+        // --- LOGGING UPDATE: Save context ---
+        logger.setSessionContext(config, script, quiz);
 
         setSessionData({ script, audioBase64, quiz });
 
-        const playbackRate = config.pacing === TutoringPacing.FAST ? 1.25 : 1.0;
+        // Decrease playback rate to slow down speed as requested
+        // Normal = 0.9x, Fast = 1.15x
+        const playbackRate = config.pacing === TutoringPacing.FAST ? 1.15 : 0.9;
         
         audioPlayerRef.current = new AudioPlayer(playbackRate);
         await audioPlayerRef.current.loadAudio(audioBase64);
@@ -214,9 +247,14 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
       
       try {
         if (!sessionData) return;
+        
+        // Now returns userTranscript and aiAnswer
         const result = await answerLearnerQuestion(sessionData.script, base64String);
         
-        setAnswerText(result.text);
+        // --- LOGGING UPDATE: Record conversation ---
+        logger.logConversation(result.userTranscript, result.aiAnswer);
+
+        setAnswerText(result.aiAnswer);
         setState(SessionState.ANSWERING);
 
         answerPlayerRef.current = new AudioPlayer(1.0);
@@ -243,17 +281,61 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
     const isCorrect = optionIndex === sessionData.quiz[currentQuizIndex].correctIndex;
     if (isCorrect) setQuizScore(s => s + 1);
     
-    setQuizAnswers([...quizAnswers, optionIndex]);
+    const newAnswers = [...quizAnswers, optionIndex];
+    setQuizAnswers(newAnswers);
 
     if (currentQuizIndex < sessionData.quiz.length - 1) {
       setCurrentQuizIndex(prev => prev + 1);
     } else {
       logger.log('session_end', { quizScore: quizScore + (isCorrect ? 1 : 0) });
+      // Store preliminary results (without TLX yet)
+      logger.setResults(quizScore + (isCorrect ? 1 : 0), newAnswers);
       setState(SessionState.RATING);
     }
   };
 
+  const handleSkip = () => {
+    if (!sessionData) return;
+    
+    // -1 denotes a skip
+    const newAnswers = [...quizAnswers, -1];
+    setQuizAnswers(newAnswers);
+
+    if (currentQuizIndex < sessionData.quiz.length - 1) {
+      setCurrentQuizIndex(prev => prev + 1);
+    } else {
+      logger.log('session_end', { quizScore: quizScore });
+      // Store preliminary results
+      logger.setResults(quizScore, newAnswers);
+      setState(SessionState.RATING);
+    }
+  };
+  
+  const handlePreviousQuestion = () => {
+    if (!sessionData || currentQuizIndex === 0) return;
+
+    // Get the answer we are about to remove
+    const lastAnswerIndex = quizAnswers[quizAnswers.length - 1];
+    
+    // If it wasn't skipped (-1) and was correct, we need to decrement the score
+    if (lastAnswerIndex !== -1) {
+        const prevQuestion = sessionData.quiz[currentQuizIndex - 1];
+        if (lastAnswerIndex === prevQuestion.correctIndex) {
+            setQuizScore(s => Math.max(0, s - 1));
+        }
+    }
+
+    // Remove the last answer
+    setQuizAnswers(prev => prev.slice(0, -1));
+    
+    // Move back
+    setCurrentQuizIndex(prev => prev - 1);
+  };
+
   const handleRatingSubmit = (rating: NasaTlxResult) => {
+    // Update logger with final rating
+    logger.setResults(quizScore, quizAnswers, rating);
+    
     onSessionComplete({
       config,
       quizScore,
@@ -319,7 +401,7 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
              {/* The Audio Wave Visualizer */}
              <div className="h-24 w-full flex justify-center items-center relative -mt-4 opacity-80">
                 {state === SessionState.LISTENING ? (
-                    <div className="flex items-center gap-2 animate-pulse text-rose-400 font-mono text-sm">
+                    <div className={`flex items-center gap-2 animate-pulse font-mono text-sm ${isLightMode ? 'text-rose-600' : 'text-rose-400'}`}>
                         <span className="w-2 h-2 rounded-full bg-rose-500"></span> Recording...
                     </div>
                 ) : state === SessionState.ANSWERING ? (
@@ -337,19 +419,15 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
         </div>
         
         {/* Topic Title */}
-        <h2 className="text-4xl font-bold text-white mb-4 tracking-tight">{config.topic}</h2>
+        <h2 className={`text-4xl font-bold mb-4 tracking-tight ${textColor}`}>{config.topic}</h2>
         
         {/* Status Pills */}
         <div className="flex gap-3 justify-center mb-8">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase border ${
-                config.complexity === TutoringComplexity.COMPLEX 
-                ? 'bg-purple-500/10 border-purple-500/50 text-purple-300' 
-                : 'bg-emerald-500/10 border-emerald-500/50 text-emerald-300'
-            }`}>
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase border ${statusPillStyle}`}>
                 {config.complexity} Level
             </span>
             {state === SessionState.ANSWERING && (
-                <span className="px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase border bg-blue-500/10 border-blue-500 text-blue-300 animate-pulse">
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase border animate-pulse ${isLightMode ? 'bg-blue-500/10 border-blue-500 text-blue-700' : 'bg-blue-500/10 border-blue-500 text-blue-300'}`}>
                     Answering
                 </span>
             )}
@@ -358,15 +436,18 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
         {/* Context Text */}
         <div className="space-y-4 min-h-[60px] flex flex-col items-center">
             {state === SessionState.ANSWERING && answerText ? (
-                 <p className="text-blue-200 text-lg font-medium max-w-lg bg-blue-900/30 p-4 rounded-xl border border-blue-500/30 animate-fade-in">
+                 <p className={`text-lg font-medium max-w-lg p-4 rounded-xl border animate-fade-in ${isLightMode ? 'bg-blue-100 text-blue-900 border-blue-300' : 'bg-blue-900/30 text-blue-200 border-blue-500/30'}`}>
                     "{answerText}"
                  </p>
             ) : state === SessionState.LISTENING ? (
-                 <p className="text-rose-300 text-lg">Listening to your question...</p>
+                 <p className={`text-lg ${isLightMode ? 'text-rose-600' : 'text-rose-300'}`}>Listening to your question...</p>
             ) : state === SessionState.PROCESSING ? (
-                 <p className="text-indigo-300 text-lg">Processing your query...</p>
+                 <p className={`text-lg ${isLightMode ? 'text-indigo-600' : 'text-indigo-300'}`}>Processing your query...</p>
             ) : (
-                 <p className="text-slate-400 text-lg">Listen carefully to the explanation.</p>
+                 <div className="flex flex-col items-center gap-1">
+                     <p className={`text-lg ${subTextColor}`}>Listen carefully to the explanation.</p>
+                     <p className={`text-xs uppercase tracking-widest font-bold ${isLightMode ? 'text-slate-400' : 'text-slate-500'} opacity-70`}>Concentrate on the center point</p>
+                 </div>
             )}
         </div>
 
@@ -426,6 +507,29 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
                 {option}
                 </button>
             ))}
+            </div>
+
+            <div className="mt-8 flex justify-between items-center">
+                <button 
+                    onClick={handlePreviousQuestion}
+                    disabled={currentQuizIndex === 0}
+                    className={`px-4 py-2 flex items-center gap-1 font-medium text-sm transition-colors ${
+                        currentQuizIndex === 0 
+                        ? 'text-slate-600 cursor-not-allowed' 
+                        : 'text-slate-500 hover:text-slate-300 group'
+                    }`}
+                >
+                    <svg className={`w-4 h-4 ${currentQuizIndex !== 0 && 'group-hover:-translate-x-1'} transition-transform`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 17l-5-5m0 0l5-5m-5 5h12"></path></svg>
+                    Previous
+                </button>
+
+                <button 
+                  onClick={handleSkip}
+                  className="px-4 py-2 text-slate-500 hover:text-slate-300 transition-colors flex items-center gap-1 font-medium text-sm group"
+                >
+                  Skip Question
+                  <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
+                </button>
             </div>
         </div>
       </div>

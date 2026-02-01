@@ -14,14 +14,16 @@ export enum WorkloadCondition {
 }
 
 export enum TutoringComplexity {
-  SIMPLE = 'Simple',
-  COMPLEX = 'Complex'
+  SIMPLE = 'A',
+  COMPLEX = 'B'
 }
 
 export enum TutoringPacing {
-  NORMAL = 'Normal',
-  FAST = 'Fast'
+  NORMAL = 'C',
+  FAST = 'D'
 }
+
+export type SessionMode = 'explanation' | 'interruption' | 'quiz' | 'default';
 
 export interface TutoringConfig {
   topic: string;

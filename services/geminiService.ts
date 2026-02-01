@@ -36,16 +36,17 @@ export const generateTutoringScript = async (
   return withRetry(async () => {
     const client = getClient();
     
+    // Updated complexity prompt to be much simpler (6th grade level)
     const complexityPrompt = complexity === TutoringComplexity.SIMPLE 
-      ? "Use simple language, foundational concepts, and short sentences suitable for a beginner." 
+      ? "Use extremely simple vocabulary, short sentences, and clear analogies suitable for a 6th grade student (approx. 11-12 years old). Avoid complex jargon completely." 
       : "Use technical terminology, dense syntax, and in-depth academic concepts suitable for an advanced student.";
 
     // Calculate target word count to ensure ~60 seconds of audio.
-    // Average speaking rate is ~150 words per minute.
-    // If Pacing is FAST, playback is 1.25x, so we need 1.25 * 150 = ~188 words to fill 1 minute.
+    // Adjusted counts down to allow for slower playback speed and reduced cognitive load.
+    // Normal speed is now 0.9x, so we target fewer words (approx 110-120) to keep it around 60s.
     const lengthPrompt = pacing === TutoringPacing.FAST
-      ? "The script must be approximately 190 words long. This specific length is required because the text will be read at 1.25x speed, resulting in exactly 60 seconds of audio."
-      : "The script must be approximately 150 words long. This specific length is required to result in exactly 60 seconds of audio at a normal speaking rate.";
+      ? "The script must be approximately 150 words long. This specific length is required for a faster reading pace."
+      : "The script must be approximately 110 words long. This specific length is required to allow for a slow, relaxed, and deliberate reading pace.";
 
     const prompt = `
       You are an AI Tutor.
@@ -149,11 +150,12 @@ export const generateQuiz = async (script: string): Promise<QuizQuestion[]> => {
 };
 
 // 4. Answer Learner Question (Interruption)
-export const answerLearnerQuestion = async (contextScript: string, userAudioBase64: string): Promise<{text: string, audioData: string}> => {
+export const answerLearnerQuestion = async (contextScript: string, userAudioBase64: string): Promise<{userTranscript: string, aiAnswer: string, audioData: string}> => {
   return withRetry(async () => {
     const client = getClient();
     
     // Step 4a: Get Text Answer using multimodal input (text context + user audio)
+    // We request JSON so we can extract both the Transcription (what user said) and the Answer
     const prompt = `
     You are an AI Tutor interrupting your lesson to answer a student's question.
     
@@ -161,27 +163,44 @@ export const answerLearnerQuestion = async (contextScript: string, userAudioBase
     
     Instruction: 
     1. Listen to the student's question in the audio.
-    2. Answer the question in ONE SHORT SENTENCE (max 20 words).
-    3. Be direct and encouraging.
+    2. Transcribe exactly what the student asked.
+    3. Answer the question in ONE SHORT SENTENCE (max 20 words).
+    4. Be direct and encouraging.
     `;
 
-    // We use gemini-3-flash-preview as it supports audio input and is fast
-    const answerResponse = await client.models.generateContent({
+    const response = await client.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: {
             parts: [
                 { text: prompt },
                 { inlineData: { mimeType: 'audio/webm', data: userAudioBase64 } }
             ]
+        },
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    userTranscript: { type: Type.STRING },
+                    aiAnswer: { type: Type.STRING }
+                }
+            }
         }
     });
     
-    const answerText = answerResponse.text || "I didn't quite catch that, could you repeat?";
+    let result = { userTranscript: "Unknown", aiAnswer: "I didn't catch that." };
+    try {
+        if (response.text) {
+            result = JSON.parse(response.text);
+        }
+    } catch (e) {
+        console.error("Failed to parse answer JSON", e);
+    }
 
     // Step 4b: TTS the Answer to match the tutor's voice
     const ttsResponse = await client.models.generateContent({
       model: 'gemini-2.5-flash-preview-tts',
-      contents: [{ parts: [{ text: answerText }] }],
+      contents: [{ parts: [{ text: result.aiAnswer }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -197,7 +216,11 @@ export const answerLearnerQuestion = async (contextScript: string, userAudioBase
       throw new Error("Failed to generate answer audio");
     }
 
-    return { text: answerText, audioData };
+    return { 
+        userTranscript: result.userTranscript, 
+        aiAnswer: result.aiAnswer, 
+        audioData 
+    };
   });
 };
 
