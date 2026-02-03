@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { TutoringConfig, TutoringComplexity, TutoringPacing, TutoringSessionData, NasaTlxResult, QuizQuestion, SessionMode } from '../types';
 import { generateTutoringScript, generateTutoringAudio, generateQuiz, answerLearnerQuestion } from '../services/geminiService';
@@ -446,7 +447,6 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
             ) : (
                  <div className="flex flex-col items-center gap-1">
                      <p className={`text-lg ${subTextColor}`}>Listen carefully to the explanation.</p>
-                     <p className={`text-xs uppercase tracking-widest font-bold ${isLightMode ? 'text-slate-400' : 'text-slate-500'} opacity-70`}>Concentrate on the center point</p>
                  </div>
             )}
         </div>

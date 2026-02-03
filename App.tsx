@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppState, TutoringConfig, TutoringComplexity, TutoringPacing, SessionMode } from './types';
 import TutoringSession from './components/TutoringSession';
@@ -15,7 +16,6 @@ const App: React.FC = () => {
   const [results, setResults] = useState<any[]>([]);
   const [bgImage, setBgImage] = useState<string | null>(null);
 
-  // Load AI Background on Mount
   useEffect(() => {
     const loadBackground = async () => {
         try {
@@ -28,7 +28,6 @@ const App: React.FC = () => {
     loadBackground();
   }, []);
 
-  // Navigation Handlers
   const startTutoringSetup = () => {
       setAppState(AppState.TUTORING_SETUP);
       setSessionMode('default');
@@ -67,7 +66,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Render Views
   const renderContent = () => {
     switch (appState) {
       case AppState.WELCOME:
@@ -85,7 +83,7 @@ const App: React.FC = () => {
             <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 text-left space-y-4 shadow-lg backdrop-blur-sm">
                 <h3 className="text-lg font-bold text-white">Session Protocol</h3>
                 <ul className="list-disc list-inside text-slate-300 space-y-2">
-                    <li><span className="text-blue-400 font-bold">Learning Phase</span> - Learn a topic from an AI Tutor with varying complexity.</li>
+                    <li><span className="text-blue-400 font-bold">Learning Phase</span> - Choose one of three curated topics for your lesson.</li>
                     <li><span className="text-emerald-400 font-bold">Evaluation</span> - Assessment and subjective workload rating.</li>
                 </ul>
             </div>
@@ -100,7 +98,7 @@ const App: React.FC = () => {
 
       case AppState.TUTORING_SETUP:
         return (
-            <div className="max-w-lg w-full bg-slate-800/90 backdrop-blur-md p-8 rounded-2xl shadow-xl border border-slate-700 relative">
+            <div className="max-w-2xl w-full bg-slate-800/90 backdrop-blur-md p-8 rounded-2xl shadow-xl border border-slate-700 relative">
                 <button 
                   onClick={goBackToWelcome}
                   className="absolute top-4 left-4 text-slate-400 hover:text-white transition-colors"
@@ -109,55 +107,64 @@ const App: React.FC = () => {
                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
                 </button>
 
-                <h2 className="text-2xl font-bold text-white mb-6 text-center">Configure Tutoring Session</h2>
+                <h2 className="text-2xl font-bold text-white mb-8 text-center">Setup Your Session</h2>
                 
-                <div className="space-y-6">
+                <div className="space-y-8">
                     <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-2">Learning Topic</label>
-                        <input 
-                            type="text" 
-                            value={tutoringConfig.topic}
-                            onChange={(e) => setTutoringConfig({...tutoringConfig, topic: e.target.value})}
-                            className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                            placeholder="e.g. Quantum Physics, Roman History"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-2">Complexity</label>
-                        <div className="grid grid-cols-2 gap-4">
-                            {[TutoringComplexity.SIMPLE, TutoringComplexity.COMPLEX].map((c) => (
+                        <label className="block text-sm font-medium text-slate-400 mb-4 text-center uppercase tracking-widest">Select Learning Topic</label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {[
+                                { id: 'Photosynthesis', label: 'Photosynthesis', icon: '🌱' },
+                                { id: 'Business Studies', label: 'Business Studies', icon: '📈' },
+                                { id: 'Climate Change', label: 'Climate Change', icon: '🌍' }
+                            ].map((t) => (
                                 <button
-                                    key={c}
-                                    onClick={() => setTutoringConfig({...tutoringConfig, complexity: c})}
-                                    className={`p-3 rounded-lg border transition-all ${tutoringConfig.complexity === c ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-slate-700 border-transparent text-slate-400 hover:bg-slate-600'}`}
+                                    key={t.id}
+                                    onClick={() => setTutoringConfig({...tutoringConfig, topic: t.id})}
+                                    className={`p-6 rounded-xl border transition-all flex flex-col items-center gap-3 text-center ${tutoringConfig.topic === t.id ? 'bg-blue-600/20 border-blue-500 scale-105' : 'bg-slate-700/50 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
                                 >
-                                    {c}
+                                    <span className="text-3xl">{t.icon}</span>
+                                    <span className={`font-bold ${tutoringConfig.topic === t.id ? 'text-white' : ''}`}>{t.label}</span>
                                 </button>
                             ))}
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-2">Pacing</label>
-                        <div className="grid grid-cols-2 gap-4">
-                            {[TutoringPacing.NORMAL, TutoringPacing.FAST].map((p) => (
-                                <button
-                                    key={p}
-                                    onClick={() => setTutoringConfig({...tutoringConfig, pacing: p})}
-                                    className={`p-3 rounded-lg border transition-all ${tutoringConfig.pacing === p ? 'bg-emerald-600/20 border-emerald-500 text-emerald-400' : 'bg-slate-700 border-transparent text-slate-400 hover:bg-slate-600'}`}
-                                >
-                                    {p}
-                                </button>
-                            ))}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <div className="flex gap-2">
+                                {[TutoringComplexity.SIMPLE, TutoringComplexity.COMPLEX].map((c) => (
+                                    <button
+                                        key={c}
+                                        onClick={() => setTutoringConfig({...tutoringConfig, complexity: c})}
+                                        className={`flex-1 p-3 rounded-lg border transition-all text-sm font-bold ${tutoringConfig.complexity === c ? 'bg-purple-600/30 border-purple-500 text-purple-300' : 'bg-slate-700/50 border-slate-600 text-slate-500 hover:bg-slate-700'}`}
+                                    >
+                                        {c}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <div className="flex gap-2">
+                                {[TutoringPacing.NORMAL, TutoringPacing.FAST].map((p) => (
+                                    <button
+                                        key={p}
+                                        onClick={() => setTutoringConfig({...tutoringConfig, pacing: p})}
+                                        className={`flex-1 p-3 rounded-lg border transition-all text-sm font-bold ${tutoringConfig.pacing === p ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300' : 'bg-slate-700/50 border-slate-600 text-slate-500 hover:bg-slate-700'}`}
+                                    >
+                                        {p}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
                     <button 
                         onClick={startTutoringSession}
-                        className="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-lg shadow-lg mt-4"
+                        className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-900/40 transition-all transform hover:scale-[1.02] active:scale-95 text-lg"
                     >
-                        Start Session
+                        Initialize AI Tutor
                     </button>
                 </div>
             </div>
@@ -251,17 +258,12 @@ const App: React.FC = () => {
             backgroundPosition: 'center',
         }}
     >
-      {/* Dark Overlay for readability - only in default mode */}
       {sessionMode === 'default' && (
         <div className={`absolute inset-0 bg-slate-900/80 transition-opacity duration-1000 ${bgImage ? 'opacity-90' : 'opacity-100'}`}></div>
       )}
-      
-      {/* Radial Gradient fallback/blend - only in default mode */}
       {sessionMode === 'default' && (
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent to-slate-950 pointer-events-none"></div>
       )}
-
-      {/* Content wrapper with z-index */}
       <div className="relative z-10 w-full flex flex-col items-center justify-center">
         {renderContent()}
       </div>

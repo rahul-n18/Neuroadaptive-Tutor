@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { TutoringComplexity, TutoringPacing, QuizQuestion } from "../types";
 
@@ -10,16 +11,29 @@ const getClient = () => {
   return new GoogleGenAI({ apiKey });
 };
 
+// PRE-SCRIPTED CONTENT for fixed topics to ensure faster generation and consistent quality
+const PRE_SCRIPTED_CONTENT: Record<string, Record<string, string>> = {
+  "Photosynthesis": {
+    [TutoringComplexity.SIMPLE]: "Photosynthesis is how plants make their own food. Imagine plants are like little green chefs! They take three main ingredients: sunlight, water, and a gas from the air called carbon dioxide. Inside the plant's leaves, there are tiny green parts called chloroplasts. These chloroplasts act like solar panels, catching the sun's energy. They use this energy to mix the water and carbon dioxide together. This process creates a special kind of sugar called glucose, which is the plant's food. While making food, plants also release oxygen into the air, which is the very air we need to breathe! So, without photosynthesis, we wouldn't have food or oxygen. It is truly the most important process for life on our beautiful Earth.",
+    [TutoringComplexity.COMPLEX]: "Photosynthesis is a sophisticated multi-stage biochemical process occurring primarily within the chloroplasts of photoautotrophs. It consists of two main phases: the light-dependent reactions and the light-independent Calvin cycle. During the light-dependent phase, chlorophyll molecules within the thylakoid membranes absorb photons, exciting electrons and initiating an electron transport chain. This leads to the photolysis of water, releasing oxygen as a byproduct and generating ATP and NADPH. These energy carriers then power the Calvin cycle in the stroma. Here, the enzyme Rubisco facilitates carbon fixation, incorporating atmospheric carbon dioxide into organic molecules. Through a series of reduction reactions, these molecules are ultimately transformed into glyceraldehyde-3-phosphate, the precursor for glucose and other essential carbohydrates, sustaining nearly all terrestrial trophic structures."
+  },
+  "Business Studies": {
+    [TutoringComplexity.SIMPLE]: "Business is all about people working together to provide things that other people want or need. Think of a lemonade stand: you are the business owner. You buy lemons and sugar, which are your costs. Then you make lemonade and sell it for a price. If the money you get from selling is more than what you spent on ingredients, you have made a profit! Profit is important because it helps the business grow. Businesses can sell products, like toys and books, or services, like cutting hair or fixing cars. Every successful business starts with a good idea and a plan to reach customers who will value what you are offering.",
+    [TutoringComplexity.COMPLEX]: "Business studies explores the dynamic organizational structures and economic principles that drive commercial activity. At its core, a firm aims to maximize shareholder value through efficient resource allocation and strategic positioning. This involves analyzing market structures, such as perfect competition or oligopolies, and understanding the supply-demand equilibrium. Strategic management tools, like SWOT analysis and Porter’s Five Forces, allow businesses to assess their competitive advantages. Financial management is equally critical, focusing on liquidity, capital structure, and the cost of debt versus equity. Furthermore, businesses must navigate external macroeconomic factors, including fiscal policies and global trade regulations, while maintaining corporate social responsibility to ensure long-term sustainability in an increasingly interconnected global marketplace."
+  },
+  "Climate Change": {
+    [TutoringComplexity.SIMPLE]: "Climate change means that the Earth's average temperature is getting warmer over a long time. This is happening because of the greenhouse effect. Imagine the Earth is wearing a thick blanket made of gases like carbon dioxide. When we drive cars or use power from factories, we add more layers to that blanket, trapping too much of the sun's heat. This extra warmth is causing ice at the North and South Poles to melt, which makes the sea levels rise. It also causes more extreme weather, like very big storms or long droughts. By using cleaner energy like wind and solar power, and by recycling, we can help keep our planet's temperature stable and healthy for everyone.",
+    [TutoringComplexity.COMPLEX]: "Climate change refers to significant, long-term shifts in global temperature and weather patterns, primarily driven by anthropogenic greenhouse gas emissions since the Industrial Revolution. The core mechanism is radiative forcing, where gases such as carbon dioxide and methane trap infrared radiation within the troposphere. This leads to a warming trend that triggers various feedback loops, such as the ice-albedo feedback, where melting polar ice reduces the Earth's reflectivity, accelerating further warming. Scientific consensus, supported by IPCC reports, indicates that these changes result in ocean acidification, rising sea levels due to thermal expansion and glacial melt, and increased frequency of extreme meteorological events. Mitigating these impacts requires a systemic transition to a low-carbon economy and robust international climate policy frameworks."
+  }
+};
+
 // Retry Helper
 async function withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
-    // Retry on 5xx errors or specific "Internal error" messages
     const isRetryable = error.status >= 500 || error.message?.includes('Internal error') || error.message?.includes('Overloaded');
-    
     if (retries > 0 && isRetryable) {
-      console.warn(`Retrying API call... (${retries} attempts left). Error: ${error.message}`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return withRetry(fn, retries - 1, delay * 2);
     }
@@ -33,52 +47,37 @@ export const generateTutoringScript = async (
   complexity: TutoringComplexity,
   pacing: TutoringPacing
 ): Promise<string> => {
+  // Check if we have a pre-scripted response for this topic
+  if (PRE_SCRIPTED_CONTENT[topic] && PRE_SCRIPTED_CONTENT[topic][complexity]) {
+    // Return the "already-scripted" response immediately to speed up initialization
+    return PRE_SCRIPTED_CONTENT[topic][complexity];
+  }
+
+  // Fallback to LLM if topic is not pre-scripted (though UI restricts it now)
   return withRetry(async () => {
     const client = getClient();
-    
-    // Updated complexity prompt to be much simpler (6th grade level)
     const complexityPrompt = complexity === TutoringComplexity.SIMPLE 
-      ? "Use extremely simple vocabulary, short sentences, and clear analogies suitable for a 6th grade student (approx. 11-12 years old). Avoid complex jargon completely." 
-      : "Use technical terminology, dense syntax, and in-depth academic concepts suitable for an advanced student.";
-
-    // Calculate target word count to ensure ~60 seconds of audio.
-    // Adjusted counts down to allow for slower playback speed and reduced cognitive load.
-    // Normal speed is now 0.9x, so we target fewer words (approx 110-120) to keep it around 60s.
+      ? "Use extremely simple vocabulary and short sentences for a 6th grader." 
+      : "Use technical academic terminology and complex logic.";
     const lengthPrompt = pacing === TutoringPacing.FAST
-      ? "The script must be approximately 150 words long. This specific length is required for a faster reading pace."
-      : "The script must be approximately 110 words long. This specific length is required to allow for a slow, relaxed, and deliberate reading pace.";
+      ? "Approximately 150 words long."
+      : "Approximately 110 words long.";
 
-    const prompt = `
-      You are an AI Tutor.
-      Topic: ${topic}
-      Level: ${complexity}
-      Instruction: ${complexityPrompt}
-      Task: Write a clear, educational explanation of the topic. ${lengthPrompt}
-      Do not use markdown formatting like bold or headers, just plain text suitable for reading aloud.
-      Strictly adhere to the word count to ensure the timing is correct.
-    `;
+    const prompt = `Write a plain text educational script about ${topic}. Level: ${complexity}. Instruction: ${complexityPrompt} ${lengthPrompt}`;
 
     const response = await client.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
 
-    const rawText = response.text || "Failed to generate script.";
-    // Cleanup: Remove markdown bold/italic markers
-    return rawText.replace(/\*+/g, '').trim();
+    return (response.text || "Failed to generate script.").replace(/\*+/g, '').trim();
   });
 };
 
 // 2. Generate Audio (TTS)
 export const generateTutoringAudio = async (text: string): Promise<string> => {
-  if (!text || text.length === 0) {
-    throw new Error("Cannot generate audio for empty text.");
-  }
-
   return withRetry(async () => {
     const client = getClient();
-    
-    // Using the specific TTS model as requested in prompt instructions
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash-preview-tts',
       contents: [{ parts: [{ text }] }],
@@ -91,11 +90,8 @@ export const generateTutoringAudio = async (text: string): Promise<string> => {
         },
       },
     });
-
     const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioData) {
-      throw new Error("Failed to generate audio.");
-    }
+    if (!audioData) throw new Error("Failed to generate audio.");
     return audioData;
   });
 };
@@ -104,24 +100,9 @@ export const generateTutoringAudio = async (text: string): Promise<string> => {
 export const generateQuiz = async (script: string): Promise<QuizQuestion[]> => {
   return withRetry(async () => {
     const client = getClient();
-    const prompt = `
-      Based on the following explanation, generate 3 multiple-choice comprehension questions.
-      
-      Explanation: "${script}"
-
-      Output JSON format:
-      [
-        {
-          "question": "Question text",
-          "options": ["Option A", "Option B", "Option C", "Option D"],
-          "correctIndex": 0 // index of correct option (0-3)
-        }
-      ]
-    `;
-
     const response = await client.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: `Based on this text, generate 3 multiple-choice questions (1: Recall, 2: Conceptual, 3: Higher-order): "${script}"`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -138,36 +119,14 @@ export const generateQuiz = async (script: string): Promise<QuizQuestion[]> => {
         },
       },
     });
-
-    try {
-      const text = response.text || "[]";
-      return JSON.parse(text);
-    } catch (e) {
-      console.error("Failed to parse quiz JSON", e);
-      return [];
-    }
+    return JSON.parse(response.text || "[]");
   });
 };
 
-// 4. Answer Learner Question (Interruption)
 export const answerLearnerQuestion = async (contextScript: string, userAudioBase64: string): Promise<{userTranscript: string, aiAnswer: string, audioData: string}> => {
   return withRetry(async () => {
     const client = getClient();
-    
-    // Step 4a: Get Text Answer using multimodal input (text context + user audio)
-    // We request JSON so we can extract both the Transcription (what user said) and the Answer
-    const prompt = `
-    You are an AI Tutor interrupting your lesson to answer a student's question.
-    
-    Context of the current lesson: "${contextScript}"
-    
-    Instruction: 
-    1. Listen to the student's question in the audio.
-    2. Transcribe exactly what the student asked.
-    3. Answer the question in ONE SHORT SENTENCE (max 20 words).
-    4. Be direct and encouraging.
-    `;
-
+    const prompt = `Answer student question based on context: "${contextScript}". Short answer (max 20 words).`;
     const response = await client.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: {
@@ -187,68 +146,21 @@ export const answerLearnerQuestion = async (contextScript: string, userAudioBase
             }
         }
     });
-    
-    let result = { userTranscript: "Unknown", aiAnswer: "I didn't catch that." };
-    try {
-        if (response.text) {
-            result = JSON.parse(response.text);
-        }
-    } catch (e) {
-        console.error("Failed to parse answer JSON", e);
-    }
-
-    // Step 4b: TTS the Answer to match the tutor's voice
-    const ttsResponse = await client.models.generateContent({
-      model: 'gemini-2.5-flash-preview-tts',
-      contents: [{ parts: [{ text: result.aiAnswer }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' },
-          },
-        },
-      },
-    });
-
-    const audioData = ttsResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!audioData) {
-      throw new Error("Failed to generate answer audio");
-    }
-
-    return { 
-        userTranscript: result.userTranscript, 
-        aiAnswer: result.aiAnswer, 
-        audioData 
-    };
+    let result = JSON.parse(response.text || '{"userTranscript":"?","aiAnswer":"..."}');
+    const audioData = await generateTutoringAudio(result.aiAnswer);
+    return { ...result, audioData };
   });
 };
 
-// 5. Generate App Background
 export const generateAppBackground = async (): Promise<string> => {
   return withRetry(async () => {
     const client = getClient();
-    // Prompt optimized for gemini-2.5-flash-image
-    const prompt = "Futuristic dark blue background with subtle glowing neural network connections. Digital art, abstract, high quality, 4k. Minimalist, suitable for app background.";
-    
     const response = await client.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [{ text: prompt }]
-      },
-      config: {
-        imageConfig: {
-            aspectRatio: "16:9",
-        }
-      }
+      contents: { parts: [{ text: 'Abstract digital neural networks, dark blue and slate colors, high quality.' }] }
     });
-
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-      }
-    }
-    
+    const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+    if (part?.inlineData) return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
     throw new Error("No image generated");
   });
 };
