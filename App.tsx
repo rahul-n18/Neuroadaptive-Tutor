@@ -5,14 +5,33 @@ import TutoringSession from './components/TutoringSession';
 import { generateAppBackground } from './services/geminiService';
 import { logger } from './utils/eventLogger';
 
+// Define the 4 combinations for the experiment
+// 1: Simple + Normal
+// 2: Simple + Fast
+// 3: Complex + Normal
+// 4: Complex + Fast
+// These are mapped to ID 1-4. We can shuffle them if needed, but fixed mapping 
+// with opaque IDs (1, 2, 3, 4) satisfies the requirement of appearing random to the user.
+// We'll use a non-linear mapping to make it less obvious if they try sequential IDs.
+const COMBINATIONS = [
+  { id: 1, complexity: TutoringComplexity.SIMPLE, pacing: TutoringPacing.NORMAL },
+  { id: 2, complexity: TutoringComplexity.COMPLEX, pacing: TutoringPacing.FAST },
+  { id: 3, complexity: TutoringComplexity.SIMPLE, pacing: TutoringPacing.FAST },
+  { id: 4, complexity: TutoringComplexity.COMPLEX, pacing: TutoringPacing.NORMAL },
+].sort((a, b) => a.id - b.id); // Ensure sorted by ID for display
+
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.WELCOME);
   const [sessionMode, setSessionMode] = useState<SessionMode>('default');
+  
+  // Default to Combination 1
   const [tutoringConfig, setTutoringConfig] = useState<TutoringConfig>({
     topic: 'Photosynthesis',
-    complexity: TutoringComplexity.SIMPLE,
-    pacing: TutoringPacing.NORMAL
+    complexity: COMBINATIONS[0].complexity,
+    pacing: COMBINATIONS[0].pacing,
+    combinationId: COMBINATIONS[0].id
   });
+  
   const [results, setResults] = useState<any[]>([]);
   const [bgImage, setBgImage] = useState<string | null>(null);
 
@@ -42,6 +61,8 @@ const App: React.FC = () => {
     setResults([...results, data]);
     setAppState(AppState.FINISHED);
     setSessionMode('default');
+    // Automatically trigger JSON download when session completes
+    logger.exportJSON();
   };
   const restart = () => {
     setResults([]);
@@ -55,6 +76,18 @@ const App: React.FC = () => {
 
   const handleModeChange = (mode: SessionMode) => {
     setSessionMode(mode);
+  };
+
+  const setCombination = (id: number) => {
+    const combo = COMBINATIONS.find(c => c.id === id);
+    if (combo) {
+        setTutoringConfig(prev => ({
+            ...prev,
+            combinationId: id,
+            complexity: combo.complexity,
+            pacing: combo.pacing
+        }));
+    }
   };
 
   const getBackgroundClass = () => {
@@ -121,7 +154,7 @@ const App: React.FC = () => {
                                 <button
                                     key={t.id}
                                     onClick={() => setTutoringConfig({...tutoringConfig, topic: t.id})}
-                                    className={`p-6 rounded-xl border transition-all flex flex-col items-center gap-3 text-center ${tutoringConfig.topic === t.id ? 'bg-blue-600/20 border-blue-500 scale-105' : 'bg-slate-700/50 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
+                                    className={`p-6 rounded-xl border transition-all flex flex-col items-center gap-3 text-center ${tutoringConfig.topic === t.id ? 'bg-blue-600/20 border-blue-500 scale-105 shadow-lg shadow-blue-900/20' : 'bg-slate-700/50 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
                                 >
                                     <span className="text-3xl">{t.icon}</span>
                                     <span className={`font-bold ${tutoringConfig.topic === t.id ? 'text-white' : ''}`}>{t.label}</span>
@@ -130,34 +163,20 @@ const App: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div>
-                            <div className="flex gap-2">
-                                {[TutoringComplexity.SIMPLE, TutoringComplexity.COMPLEX].map((c) => (
-                                    <button
-                                        key={c}
-                                        onClick={() => setTutoringConfig({...tutoringConfig, complexity: c})}
-                                        className={`flex-1 p-3 rounded-lg border transition-all text-sm font-bold ${tutoringConfig.complexity === c ? 'bg-purple-600/30 border-purple-500 text-purple-300' : 'bg-slate-700/50 border-slate-600 text-slate-500 hover:bg-slate-700'}`}
-                                    >
-                                        {c}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div>
-                            <div className="flex gap-2">
-                                {[TutoringPacing.NORMAL, TutoringPacing.FAST].map((p) => (
-                                    <button
-                                        key={p}
-                                        onClick={() => setTutoringConfig({...tutoringConfig, pacing: p})}
-                                        className={`flex-1 p-3 rounded-lg border transition-all text-sm font-bold ${tutoringConfig.pacing === p ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300' : 'bg-slate-700/50 border-slate-600 text-slate-500 hover:bg-slate-700'}`}
-                                    >
-                                        {p}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                    <div>
+                         <label className="block text-sm font-medium text-slate-400 mb-4 text-center uppercase tracking-widest">Select Combination</label>
+                         <div className="grid grid-cols-4 gap-4">
+                            {COMBINATIONS.map((combo) => (
+                                <button
+                                    key={combo.id}
+                                    onClick={() => setCombination(combo.id)}
+                                    className={`p-4 rounded-xl border transition-all flex flex-col items-center justify-center gap-1 text-center group ${tutoringConfig.combinationId === combo.id ? 'bg-indigo-600/30 border-indigo-500 text-indigo-300 scale-105 shadow-lg shadow-indigo-900/20' : 'bg-slate-700/50 border-slate-600 text-slate-500 hover:bg-slate-700'}`}
+                                >
+                                    <span className="text-2xl font-bold group-hover:scale-110 transition-transform">{combo.id}</span>
+                                    <div className="h-1 w-8 rounded-full bg-current opacity-20"></div>
+                                </button>
+                            ))}
+                         </div>
                     </div>
 
                     <button 
@@ -185,7 +204,7 @@ const App: React.FC = () => {
                     <table className="w-full text-left text-sm text-slate-400">
                         <thead className="bg-slate-700/50 text-slate-200">
                             <tr>
-                                <th className="p-4">Condition</th>
+                                <th className="p-4">Combo</th>
                                 <th className="p-4">Topic</th>
                                 <th className="p-4">Score</th>
                                 <th className="p-4">Workload (Avg)</th>
@@ -197,9 +216,13 @@ const App: React.FC = () => {
                                 return (
                                     <tr key={i} className="border-t border-slate-700 hover:bg-slate-700/30 transition-colors">
                                         <td className="p-4">
-                                            <div className="flex gap-2">
-                                                <span className="px-2 py-1 rounded bg-slate-700 border border-slate-600 text-xs">{r.config.complexity}</span>
-                                                <span className="px-2 py-1 rounded bg-slate-700 border border-slate-600 text-xs">{r.config.pacing}</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-6 h-6 rounded-full bg-indigo-500/20 border border-indigo-500/50 text-indigo-300 flex items-center justify-center font-bold text-xs">
+                                                    {r.config.combinationId}
+                                                </span>
+                                                <span className="text-xs text-slate-500 hidden md:inline-block">
+                                                    ({r.config.complexity}/{r.config.pacing})
+                                                </span>
                                             </div>
                                         </td>
                                         <td className="p-4 font-bold text-white">{r.config.topic}</td>

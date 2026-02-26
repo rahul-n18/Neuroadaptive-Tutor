@@ -423,10 +423,7 @@ const TutoringSession: React.FC<TutoringSessionProps> = ({ config, onSessionComp
         <h2 className={`text-4xl font-bold mb-4 tracking-tight ${textColor}`}>{config.topic}</h2>
         
         {/* Status Pills */}
-        <div className="flex gap-3 justify-center mb-8">
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase border ${statusPillStyle}`}>
-                {config.complexity} Level
-            </span>
+        <div className="flex gap-3 justify-center mb-8 min-h-[1.5rem]">
             {state === SessionState.ANSWERING && (
                 <span className={`px-3 py-1 rounded-full text-xs font-semibold tracking-wider uppercase border animate-pulse ${isLightMode ? 'bg-blue-500/10 border-blue-500 text-blue-700' : 'bg-blue-500/10 border-blue-500 text-blue-300'}`}>
                     Answering

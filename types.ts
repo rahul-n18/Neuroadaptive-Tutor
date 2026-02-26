@@ -1,3 +1,4 @@
+
 export enum AppState {
   WELCOME,
   CALIBRATION_INTRO,
@@ -29,6 +30,7 @@ export interface TutoringConfig {
   topic: string;
   complexity: TutoringComplexity;
   pacing: TutoringPacing;
+  combinationId: number;
 }
 
 export interface QuizQuestion {

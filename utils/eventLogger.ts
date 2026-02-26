@@ -1,4 +1,5 @@
-import { TutoringConfig, QuizQuestion, NasaTlxResult } from '../types';
+
+import { TutoringConfig, QuizQuestion, NasaTlxResult, TutoringComplexity, TutoringPacing } from '../types';
 
 export interface LogEvent {
   timestamp: number;
@@ -138,12 +139,29 @@ class EventLogger {
 
   public exportJSON() {
     if (!this.currentSession) return;
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(this.currentSession, null, 2));
+
+    // Prepare human-readable fields as requested
+    const config = this.currentSession.config;
+    
+    const readableDetails = {
+        Speed: config?.pacing === TutoringPacing.FAST ? "Fast" : "Normal",
+        Complexity: config?.complexity === TutoringComplexity.COMPLEX ? "Complex" : "Simple",
+        Topic: config?.topic || "Unknown",
+        Combination: config?.combinationId || 0
+    };
+
+    // Construct the export object with readable fields at the top level
+    const exportData = {
+        ...this.currentSession,
+        ...readableDetails
+    };
+
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
     
     // Create a filename with topic and timestamp
-    const topic = this.currentSession.config?.topic.replace(/\s+/g, '_') || 'session';
+    const topic = config?.topic.replace(/\s+/g, '_') || 'session';
     const filename = `NeuroTutor_${topic}_${this.currentSession.startTime}.json`;
     
     downloadAnchorNode.setAttribute("download", filename);
